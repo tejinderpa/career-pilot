@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Globe, Copy, Check, ExternalLink, Loader2, Sparkles, AlertCircle, Terminal } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -59,6 +59,54 @@ function TokenStatusChip({ status }) {
   );
 }
 
+function showDeploymentSuccessToast(url) {
+  toast.custom(
+    (t) => (
+      <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-950 px-4 py-3 text-sm text-emerald-50 shadow-xl">
+        <div className="flex-1">
+          <p className="font-semibold">Portfolio deployed!</p>
+          {url && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-emerald-200 underline underline-offset-2 hover:text-white"
+              onClick={() => toast.dismiss(t.id)}
+            >
+              View portfolio
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
+        </div>
+      </div>
+    ),
+    { duration: 8000 }
+  );
+}
+
+function showDeploymentFailureToast(onRetry) {
+  toast.custom(
+    (t) => (
+      <div className="flex items-center gap-3 rounded-xl border border-rose-500/30 bg-rose-950 px-4 py-3 text-sm text-rose-50 shadow-xl">
+        <div className="flex-1">
+          <p className="font-semibold">Deployment failed</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            toast.dismiss(t.id);
+            onRetry();
+          }}
+          className="rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-rose-400"
+        >
+          Retry
+        </button>
+      </div>
+    ),
+    { duration: 10000 }
+  );
+}
+
 export default function DeployModal({ isOpen, onClose, portfolioTitle = "My Portfolio", templateId = "default", aiDraft, onDeploySuccess }) {
   // Step workflow: select -> loading -> success -> error
   const [step, setStep] = useState('select');
@@ -79,6 +127,17 @@ export default function DeployModal({ isOpen, onClose, portfolioTitle = "My Port
   const confettiIntervalRef = useRef(null);
   const deployTimeoutRef = useRef(null);
   const terminalEndRef = useRef(null);
+  const activeDeploymentSlugRef = useRef(null);
+
+  const clearActiveDeploymentToast = useCallback(() => {
+    if (
+      typeof window !== 'undefined' &&
+      window.__activePortfolioDeploymentSlug === activeDeploymentSlugRef.current
+    ) {
+      delete window.__activePortfolioDeploymentSlug;
+    }
+    activeDeploymentSlugRef.current = null;
+  }, []);
 
   // Clear timers/confetti on unmount to keep everything clean and prevent leakages
   useEffect(() => {
@@ -86,9 +145,10 @@ export default function DeployModal({ isOpen, onClose, portfolioTitle = "My Port
       if (logTimerRef.current) clearTimeout(logTimerRef.current);
       if (confettiIntervalRef.current) clearInterval(confettiIntervalRef.current);
       if (deployTimeoutRef.current) clearTimeout(deployTimeoutRef.current);
+      clearActiveDeploymentToast();
       confetti.reset();
     };
-  }, []);
+  }, [clearActiveDeploymentToast]);
 
   // Handle auto-scrolling to the bottom of our retro build terminal
   useEffect(() => {
@@ -217,6 +277,10 @@ export default function DeployModal({ isOpen, onClose, portfolioTitle = "My Port
         .replace(/[^a-z0-9]/g, '-')
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '') || 'portfolio';
+      activeDeploymentSlugRef.current = slug;
+      if (typeof window !== 'undefined') {
+        window.__activePortfolioDeploymentSlug = slug;
+      }
 
       try {
         const result = await portfolioApi.deploy({
@@ -228,23 +292,33 @@ export default function DeployModal({ isOpen, onClose, portfolioTitle = "My Port
           token: tokenInputs[selectedProvider] || undefined,
         });
 
+        const liveUrl = result.data?.url || `https://cp-${slug}.pages.dev`;
+        const shouldShowLocalToast = activeDeploymentSlugRef.current === slug;
+        clearActiveDeploymentToast();
+        if (shouldShowLocalToast) {
+          showDeploymentSuccessToast(liveUrl);
+        }
+
         // Wait for the terminal animation to finish (at least 3.6s total)
         deployTimeoutRef.current = setTimeout(() => {
-          const liveUrl = result.data?.url || `https://cp-${slug}.pages.dev`;
           setDeployedUrl(liveUrl);
           setStep('success');
           triggerConfetti();
-          toast.success('Your portfolio is live! 🚀');
           if (onDeploySuccess) onDeploySuccess();
         }, 3600);
 
       } catch (err) {
         console.error('Deploy error:', err);
+        const shouldShowLocalToast = activeDeploymentSlugRef.current === slug;
+        clearActiveDeploymentToast();
+        if (shouldShowLocalToast) {
+          showDeploymentFailureToast(handleDeploy);
+        }
+
         // Wait for animation before showing error
         deployTimeoutRef.current = setTimeout(() => {
           setErrorMessage(err.message || 'Deployment failed. Please try again.');
           setStep('error');
-          toast.error('Deployment failed.');
         }, 3600);
       }
     };
@@ -277,6 +351,7 @@ export default function DeployModal({ isOpen, onClose, portfolioTitle = "My Port
       clearTimeout(deployTimeoutRef.current);
       deployTimeoutRef.current = null;
     }
+    clearActiveDeploymentToast();
     confetti.reset();
     onClose();
   };

@@ -1,7 +1,62 @@
 import { useState, useEffect, useCallback } from 'react';
+import toast from 'react-hot-toast';
 import { useAuth } from '../hooks/useAuth';
 import { initializeSocket, disconnectSocket, getSocket, socketEvents } from '../services/socket';
 import { SocketContext } from './SocketContext';
+
+function isDeploymentToastHandledByModal(data) {
+  return (
+    typeof window !== 'undefined' &&
+    data?.slug &&
+    window.__activePortfolioDeploymentSlug === data.slug
+  );
+}
+
+function showPortfolioDeploymentSocketToast(data) {
+  if (isDeploymentToastHandledByModal(data)) return;
+
+  if (data?.type === 'portfolio_deployment_success') {
+    toast.custom(
+      () => (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-950 px-4 py-3 text-sm text-emerald-50 shadow-xl">
+          <p className="font-semibold">Portfolio deployed!</p>
+          {data.url && (
+            <a
+              href={data.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-block text-xs font-medium text-emerald-200 underline underline-offset-2 hover:text-white"
+            >
+              View portfolio
+            </a>
+          )}
+        </div>
+      ),
+      { duration: 8000 }
+    );
+  }
+
+  if (data?.type === 'portfolio_deployment_failed') {
+    toast.custom(
+      (t) => (
+        <div className="flex items-center gap-3 rounded-xl border border-rose-500/30 bg-rose-950 px-4 py-3 text-sm text-rose-50 shadow-xl">
+          <p className="flex-1 font-semibold">Deployment failed</p>
+          <button
+            type="button"
+            onClick={() => {
+              toast.dismiss(t.id);
+              window.location.assign('/hub/portfolio');
+            }}
+            className="rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-rose-400"
+          >
+            Retry
+          </button>
+        </div>
+      ),
+      { duration: 10000 }
+    );
+  }
+}
 
 /**
  * Provider component that handles real-time web socket connections,
@@ -111,8 +166,11 @@ export function SocketProvider({ children }) {
           };
 
 
-          const handleNotification = (data) =>
-            pushNotification('notification', data);
+          const handleNotification = (data) => {
+            const type = data?.type || 'notification';
+            pushNotification(type, data);
+            showPortfolioDeploymentSocketToast(data);
+          };
 
           const handleJobAlertNewJobs = (data) =>
              pushNotification('job_alert_new_jobs', data);

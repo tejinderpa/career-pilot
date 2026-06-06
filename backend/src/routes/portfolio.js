@@ -19,6 +19,7 @@ import { analyzeAccessibility } from '../services/accessibilityChecker.js';
 import PortfolioVersion from '../models/PortfolioVersion.model.js';
 import UserProfile from '../models/UserProfile.model.js';
 import { getObjectDiff, applyDiff } from '../utils/diff.js';
+import { emitNotification } from '../services/jobAlertSocket.js';
 
 const router = express.Router();
 
@@ -244,6 +245,14 @@ router.post('/deploy', verifyToken, asyncHandler(async (req, res) => {
     }
   } catch (err) {
     console.error(`${provider} deploy error:`, err);
+    emitNotification(userId, {
+      type: 'portfolio_deployment_failed',
+      message: 'Deployment failed',
+      slug,
+      title,
+      provider,
+      error: err.message,
+    });
     throw new ApiError(502, `Deployment failed: ${err.message}`);
   }
 
@@ -258,6 +267,15 @@ router.post('/deploy', verifyToken, asyncHandler(async (req, res) => {
     console.error('DB save after deploy error:', dbErr);
     // Don't fail the response — the site IS live, even if DB save had an issue
   }
+
+  emitNotification(userId, {
+    type: 'portfolio_deployment_success',
+    message: 'Portfolio deployed!',
+    slug,
+    title,
+    provider,
+    url: deployment.url,
+  });
 
   res.status(200).json({
     success: true,

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bell, BriefcaseBusiness, Mail, XCircle, CheckCheck, X } from "lucide-react";
+import { Bell, BriefcaseBusiness, Globe, Mail, XCircle, CheckCheck, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useSocket } from "../hooks/useSocket";
 import { cn } from "../lib/utils";
@@ -17,6 +17,8 @@ const TYPE_CONFIG = {
   job_alert_new_jobs:    { icon: BriefcaseBusiness, color: "text-primary",    bg: "bg-primary/10",     label: "New Jobs Found",   href: "/job-alerts" },
   job_alert_email_sent:  { icon: Mail,              color: "text-green-500",   bg: "bg-green-500/10",   label: "Alert Email Sent", href: "/job-alerts" },
   job_alert_email_failed:{ icon: XCircle,           color: "text-destructive", bg: "bg-destructive/10", label: "Email Failed",     href: "/job-alerts" },
+  portfolio_deployment_success:{ icon: Globe,       color: "text-green-500",   bg: "bg-green-500/10",   label: "Portfolio deployed!", href: "/deployments" },
+  portfolio_deployment_failed: { icon: XCircle,     color: "text-destructive", bg: "bg-destructive/10", label: "Deployment failed", href: "/hub/portfolio" },
   notification:          { icon: Bell,              color: "text-primary",     bg: "bg-primary/10",     label: "Notification",     href: "/dashboard"  },
 };
 
@@ -36,6 +38,12 @@ function getTitle(notif) {
 
   if (notif.type === "job_alert_email_failed")
     return `Email failed for "${notif.data?.alertTitle || "your alert"}"`;
+
+  if (notif.type === "portfolio_deployment_success")
+    return "Portfolio deployed!";
+
+  if (notif.type === "portfolio_deployment_failed")
+    return "Deployment failed";
 
   return notif.data?.message ?? TYPE_CONFIG.notification.label;
 }
@@ -61,6 +69,10 @@ export default function NotificationCenter() {
     markRead(notif.id);
     const config = TYPE_CONFIG[notif.type] || TYPE_CONFIG.notification;
     setOpen(false);
+    if (notif.type === "portfolio_deployment_success" && notif.data?.url) {
+      window.open(notif.data.url, "_blank", "noopener,noreferrer");
+      return;
+    }
     navigate(config.href);
   };
 
